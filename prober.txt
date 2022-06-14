@@ -10,102 +10,115 @@ from easysnmp import snmp_get,snmp_walk
 Argument=sys.argv[1]
 Details=Argument.split(':')
 internetprotocol=Details[0]
-PORT=Details[1]
+Port=Details[1]
 Network=Details[2]
 
 Freqofsample=float(sys.argv[2])
-Intv21=int(sys.argv[3])
-Intv21time=1/Freqofsample 
+noofsamples=int(sys.argv[3])
+sampletime=1/Freqofsample 
 
 
 objindent=[]
-Prevobjindent1=[]
+Prevobjindent=[]
 Presobjindent=[]
 retaliation=[]
+Presenttime=0
 
 
 for Numobjindent in range(4, len(sys.argv)):
 	objindent.append(sys.argv[Numobjindent])
-objindent.insert(0, '1.3.6.1.2.1.1.1.3.0')
+objindent.insert(0, '1.3.6.1.2.1.1.3.0')
 
 
-	
+session=Session(hostname=internetprotocol,remote_port=Port,community=Network,version=2,timeout=1,retries=1)
+
 ###################################################################################################################################
 def easysnmp_prober():
-	global Prevobjindent1, CURR_TIME, gaugeoidold, SAMPLE_INTERVAL_RATE
-	session=Session(hostname=internetprotocol,remote_port=PORT,community=Network,version=2,timeout=1,retries=1)
-	retaliation=session.get(objindent)
-	#print(retaliation)
-	string = 1
+	global Prevobjindent, Presenttime, gaugeoidold, Sampleintervalrate
+	
 	gauge = 1
 	counter = 1
 	Presobjindent=[]
-	Octetoid = []
 	gaugeoid = []
 	if count != 0:
 		print(str(Prevsamp) +"|",end='')
 
 	for oid in range(1,len(retaliation)):
 		if retaliation[oid].value!='NOSUCHOBJECT' and retaliation[oid].value!='NOSUCHINSTANCE':
-
-			if retaliation[oid].snmp_type == 'OCTETSTR':
-				Octetoid.append(str(retaliation[oid].value))
-				string = string + 1
-				if count!=0 and len(Octetoid)>0:
-					print(str(Octetoid[string-2])+"|",end='')
-
-			elif retaliation[oid].snmp_type == 'GAUGE':
+			if retaliation[oid].snmp_type == 'GAUGE':
 				gaugeoid.append(int(retaliation[oid].value))
 				gauge = gauge + 1
 				if count!=0 and len(gaugeoidold)>0:
-					gauge_different_object_identifier=int(gaugeoid[gauge-2]) - int(gaugeoidold[gauge-2])
-					print(str(gaugeoid[gauge-2])+"("+"+"+str(gauge_different_object_identifier)+")"+"|",end='')
+					gauge_difference_object_identifier=int(gaugeoid[gauge-2]) - int(gaugeoidold[gauge-2])
+					print(str(gaugeoid[gauge-2])+"("+str(gauge_difference_object_identifier)+")"+"|",end='')
 					
 			elif retaliation[oid].snmp_type == 'COUNTER' or retaliation[oid].snmp_type == 'COUNTER64':
 				Presobjindent.append(int(retaliation[oid].value))
-				counter = counter + 1			
-				if count!=0 and len(Prevobjindent1)>0:
-					different_object_identifier=int(Presobjindent[counter-2]) - int(Prevobjindent1[counter-2])
-					different_time=round(Prevsamp-CURR_TIME,1)
-					SAMPLE_INTERVAL_RATE = int(different_object_identifier / different_time)
-					if SAMPLE_INTERVAL_RATE < 0 :
+				counter = counter + 1
+				if count!=0 and len(Prevobjindent)>0:
+					difference_object_identifier=int(Presobjindent[counter-2] - Prevobjindent[counter-2])
+					difference_time=float(sysuptime-Presenttime)
+					Sampleintervalrate = int(difference_object_identifier / difference_time)
+					if Sampleintervalrate < 0 :
 						if retaliation[oid].snmp_type == 'COUNTER': 
-							different_object_identifier = different_object_identifier + 2**32
-							print(str(round(different_object_identifier / different_time)) +"|",end='')
+							difference_object_identifier = difference_object_identifier + 2**32
+							print(str(round(difference_object_identifier / difference_time)) +"|",end='')
 						elif retaliation[oid].snmp_type == 'COUNTER64':
-							different_object_identifier = different_object_identifier + 2**64
-							print(str(round(different_object_identifier / different_time)) +"|",end='')
+							difference_object_identifier = difference_object_identifier + 2**64
+							print(str(round(difference_object_identifier / difference_time)) +"|",end='')
 					else:
-						print(str(round(SAMPLE_INTERVAL_RATE)) +"|",end='')
+						print(str(round(Sampleintervalrate)) +"|",end='')
 
-			# elif count!=0 and len(Octetoid)>0:
-			# 	print(str(Prevsamp) +"|"+ str(Octetoid[0]) +"|")
-			# elif count!=0 and len(gaugeoid)>0:
-			# 	print(str(Prevsamp) +"|"+ str(gaugeoid[0]) +"|")
-
-	Prevobjindent1=Presobjindent
+	Prevobjindent=Presobjindent
 	gaugeoidold=gaugeoid
-	CURR_TIME=Prevsamp
+	Presenttime=sysuptime
 	if count != 0:
 		print()
 
 ###############################################################################################################################################
 
 
-if Intv21==-1:
+if noofsamples==-1:
 	count=0
-	Prevobjindent1=[]
+	Prevobjindent=[]
 	while True:
 		Prevsamp=(time.time())
+		retaliation=session.get(objindent)
+		sysuptime=int(retaliation[0].value)/100
+		if sysuptime<Presenttime and count!=0:
+			print("system restarted")
+			break
 		easysnmp_prober()
 		response_time=(time.time())
 		count = count+1
-		time.sleep(abs(Intv21time - response_time + Prevsamp))
+		while time.time()< Prevsamp+sampletime:
+			pass
+		if response_time-Prevsamp>sampletime:
+			a=1
+			b=a*sampletime
+			while response_time-Prevsamp<b:
+				a=+1
+				b=a*sampletime
+			while time.time()< Prevsamp+a*sampletime:
+				pass
 else:
-	Prevobjindent1=[]
-	for count in range(0,Intv21+1):
+	Prevobjindent=[]
+	for count in range(0,noofsamples+1):
 		Prevsamp=(time.time())
+		retaliation=session.get(objindent)
+		sysuptime=int(retaliation[0].value)/100
+		if sysuptime<Presenttime and count!=0:
+			print("system restarted")
+			break
 		easysnmp_prober()
 		response_time=(time.time())
-		time.sleep(abs(Intv21time - response_time + Prevsamp))
-		
+		while time.time()< Prevsamp+sampletime:
+			pass
+		if response_time-Prevsamp>sampletime:
+			a=1
+			b=a*sampletime
+			while response_time-Prevsamp<b:
+				a=+1
+				b=a*sampletime
+			while time.time()< Prevsamp+a*sampletime:
+				pass
